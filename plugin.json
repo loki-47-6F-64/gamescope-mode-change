@@ -1,0 +1,7 @@
+{
+    "name": "Gamescope-mode-change",
+    "author": "Loki-47-6F-64",
+    "main_view_html": "main_view.html",
+    "tile_view_html": "",
+    "flags": ["refresh"]
+}

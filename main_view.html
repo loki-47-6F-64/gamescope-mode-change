@@ -1,0 +1,637 @@
+<html>
+    <head>
+        <link rel="stylesheet" href="/steam_resource/css/2.css">
+        <link rel="stylesheet" href="/steam_resource/css/39.css">
+        <link rel="stylesheet" href="/steam_resource/css/library.css">
+        <style>
+            body {
+                margin-left: 0;
+                margin-right: 0;
+                color: #dcdedf;
+            }
+
+            .col-container {
+                width : 90%;
+                padding-left: 5%;
+                padding-bottom: 7%;
+                display: table;
+            }
+
+            .col {
+                display: table-cell;
+                text-align: center;
+            }
+
+            h2 {
+                padding-left: 10px;
+                border-bottom: #99999999;
+            }
+
+            #element-list {
+              list-style-type: none;
+              padding: 0;
+              overflow-y: scroll;
+              height: 88%;
+              margin-bottom: 0;
+            }
+
+            #settings {
+                display: block;
+                overflow: none;
+                border-top: 1px #23262e solid;
+                bottom: 0;
+                top: 0;
+                width: 100%;
+            }
+            #settings > div {
+                padding: 12px;
+            }
+
+            div.row {
+                padding: 6px;
+            }
+
+            table td.app-list {
+                padding-top: 10px;
+                padding-left: 10px;
+                border-left: 3px solid #99999999;
+            }
+
+            table.dial {
+                width: 100%;
+                min-height: 70%;
+
+                table-layout: fixed;
+            }
+
+            table td.backspace-button {
+                text-align: center;
+                border-left: 3px solid #99999999;
+            }
+
+            table td.apply-button {
+                text-align: center;
+                font-size: 1.5em;
+            }
+
+            table td.dial {
+                text-align: center;
+
+                border-left: 3px solid #99999999;
+            }
+
+            table td.dial:last-child {
+                border-right: 3px solid #99999999;
+            }
+
+            li.dial {
+                text-align: center;
+                width: 90%;
+
+                padding-top: 5%;
+                padding-bottom: 10%;
+            }
+
+            table td.app-list:first-child {
+                border-left: none;
+                padding-left: none;
+            }
+
+            table td.app-list:last-child {
+                padding-right: 10px;
+            }
+
+            button.settings {
+                min-width: 16.66667%;
+                
+                display: inline-block;
+                margin-left: 8.333333%;
+                margin-right: 8.333333%;
+                margin-bottom: 4;
+                border: 4px;
+                border-radius: 3px;
+            }
+
+            #status {
+                color: #969696;
+            }
+        </style>
+        <script src="/static/library.js"></script>
+        <style type="text/css" media="screen"></style>
+    </head>
+    <body onload="onReady()" style="overflow-x:hidden;overflow-y:hidden;">
+        <ul id="element-list">
+            <h4 style="padding-left: 10px;">Searching for Non-Steam Apps...</h4>
+        </ul>
+        <div id="settings">
+            <div class="gamepaddialog_FieldLabelRow_H9WOq">
+                <div id="apply-settings" class="gamepaddialog_FieldLabel_3b0U- Focusable" onclick="onApplyClick()">
+                    Save settings
+                </div>
+                <div class="gamepaddialog_FieldLabel_3b0U- Focusable" onclick="onBackClick()">
+                    Go back
+                </div>
+            </div>
+        </div>
+
+        <script>
+            const tabMain = 0;
+            const tabAppSettings = 1;
+            const tabDial = 2;
+
+            // Will be retrieved from python part of plugin
+            let gamescopeModeChangeScriptPath = "";
+
+            let gamescopeModeChangeArgsEnd = " xX-gamescope-Xx && ";
+
+            function make_func_call(name, args = []) {
+                strArgs = name + "()";
+                if(args.length > 0) {
+                    strArgs = name + "(" + str(args[0]);
+                    args.slice(1, args.length).forEach(el => strArgs += ("," + str(el)));
+
+                    strArgs += ")";
+                }
+
+                return strArgs;
+            }
+
+            async function sp(action) {
+                // console.debug(action);
+                return execute_in_tab("SP", true, action);
+            }
+
+            async function setLaunchOptions(appid, options) {
+                return sp(`window.SteamClient.Apps.SetAppLaunchOptions(${appid}, "${options}")`);
+            }
+
+            async function shortcuts() {
+                let result = (await execute_in_tab("SP", true, `
+                    async function appDetails(appid) {
+                        resolver = function(e) {}
+                        promise = new Promise((resolve, reject) => {
+                            resolver = resolve;
+                        });
+
+                        let handle = SteamClient.Apps.RegisterForAppDetails(appid, function(appData) {
+                            resolver(appData);
+                        });
+
+                        let res = await promise;
+                        return res;
+                    }
+                    async function tmp() {
+                        let res = await SteamClient.Apps.GetAllShortcuts();
+
+                        let apps = res.filter(x => x.data.bIsApplication).map(function(_app) {
+                            data = _app.data;
+                            app = {
+                                "id":_app.appid,
+                                "width":0,
+                                "height":0,
+                                "name":data.strAppName,
+                                "superRes":false
+                            };
+
+                            return app;
+                        });
+
+                        for(let x = 0; x < apps.length; x++) {
+                            app = apps[x];
+                            app.fullArgs = (await appDetails(app.id)).strLaunchOptions;
+                        }
+
+                        return JSON.stringify(apps);
+                    }
+
+                    tmp()
+                `)).result;
+
+                if(result === "null") {
+                    return undefined;
+                }
+
+                return JSON.parse(result);
+            }
+
+            let state = {
+                "apps":[],
+                "onBack":exit,
+                "active_tab":{
+                    "type":tabMain,
+                    "id":undefined
+                }
+            };
+
+            function getAppByID(id) {
+                apps = state.apps;
+                for(let x = 0; x < apps.length; x++) {
+                    if(apps[x].id === id) {
+                        return apps[x];
+                    }
+                }
+
+                return undefined;
+            }
+
+            // Python functions
+            function getVersion() {
+                return call_plugin_method("get_version", {});
+            }
+
+            function modeChangeScriptPath() {
+                return call_plugin_method("mode_change_script_path", {});
+            }
+
+            function readSettings() {
+                return call_plugin_method("read_settings", {});
+            }
+
+            function writeSettings(contents) {
+                return call_plugin_method("write_settings", {"contents":contents });
+            }
+
+            function applyGamescopeModeChange(toggleStateActive, id) {
+                app = getAppByID(id);
+
+                app.active = toggleStateActive;
+                if(!toggleStateActive) {
+                    setLaunchOptions(id, app.args);
+                    return;
+                }
+
+                args = undefined;
+                if(app.args.includes("%command%")) {
+                    args = app.args;
+                }
+                else {
+                    args = `%command% ${app.args}`;
+                }
+
+                let force = app.superRes && app.width !== 0 && app.height !== 0;
+                let options =
+                    `${gamescopeModeChangeScriptPath}${force ? " --force " : " "}--id=1 --nestedWidth=${app.width} --nestedHeight=${app.height}${gamescopeModeChangeArgsEnd}${args}`;
+
+                setLaunchOptions(id, options);
+            }
+
+            function update() {
+                shortcuts().then(function(apps) { 
+                    function search(pattern, str, f) {
+                        cutoff = str.search(pattern);
+                        if(cutoff !== -1) {
+                            f(str.substring(0, cutoff), str.substring(cutoff + pattern.length));
+                        }
+                    }
+
+                    // Discard apps that are no longer stored as a shortcut on Steam
+                    state.apps = apps.map(function(_app) {
+                        app = getAppByID(_app.id);
+                        if(app === undefined) {
+                            app = _app;
+                        }
+
+                        // If fullArgs contains gamescopeModeChange logic, app.args will be replaced
+                        app.args = _app.fullArgs;
+
+                        // If app is active, take parsed data instead of stored data
+                        app.active = false;
+                        search(gamescopeModeChangeArgsEnd, _app.fullArgs, function(gamescopeArgs, args) {
+                            app.active = true;
+                            
+                            app.args = args;
+                            app.superRes = gamescopeArgs.includes("--force");
+                            
+                            search("--nestedWidth=", gamescopeArgs, function(_, strWidth) {
+                                app.width = parseInt(strWidth)
+                            });
+                            search("--nestedHeight=", gamescopeArgs, function(_, strHeight) {
+                                app.height = parseInt(strHeight)
+                            });
+                        });
+
+                        return app;
+                    });
+
+                    state.apps.sort((appL, appR) => appL.name.localeCompare(appR.name));
+
+                    switch(state.active_tab.type) {
+                        case tabMain:
+                            makeAppList();
+                            break;
+                    }
+                });
+            }
+
+            function makeDial(f) {
+                function makeDialBackspaceClick(occumulator, strOccumulator) {
+                    return function() {
+                        occumulator.backspace();
+                        strOccumulator.textContent = `${occumulator.val}`
+                    }
+                }
+
+                function makeDialClick(occumulator, strOccumulator, digit) {
+                    return function() {
+                        occumulator.addDigit(digit);
+                        strOccumulator.textContent = `${occumulator.val}`
+                    }
+                }
+
+                function makeApply(f, occumulator) {
+                    return function() {
+                        f(occumulator.val);
+                    }
+                }
+
+                occumulator = {
+                    val : 0,
+                    addDigit : function(digit) {
+                        this.val = this.val*10 + digit;
+                    },
+
+                    backspace : function() {
+                        this.val = (this.val / 10) | 0;
+                    }
+                };
+
+                parent = document.createElement("div");
+
+
+                strOccumulator = document.createElement("li");
+                strOccumulator.textContent = `${occumulator.val}`;
+                strOccumulator.className = "dial";
+
+                table = document.createElement("table");
+                table.classList = "dial";
+                for(let y = 0; y < 3; y++) {
+                    row = document.createElement("tr");
+                    for(let x = 1; x < 4; x++) {
+                        digit = 3*y + x;
+
+                        column = document.createElement("td");
+                        column.className = "dial";
+                        column.textContent = `${digit}`;
+
+                        column.onclick = makeDialClick(occumulator, strOccumulator, digit);
+
+                        row.appendChild(column);
+                    }
+
+                    table.appendChild(row);
+                }
+
+                finalRow = document.createElement("tr");
+                applyColumn = document.createElement("td");
+                backspaceColumn = document.createElement("td");
+                digitZeroColumn = document.createElement("td");
+                
+                digitZeroColumn.className = "dial";
+                digitZeroColumn.textContent = "0";
+
+                backspaceColumn.className = "backspace-button";
+                applyColumn.className = "apply-button";
+
+                backspaceColumn.innerHTML = "&#9003;";
+                applyColumn.innerHTML = "&#10003;";
+
+                digitZeroColumn.onclick = makeDialClick(occumulator, strOccumulator, 0);
+                backspaceColumn.onclick = makeDialBackspaceClick(occumulator, strOccumulator);
+                applyColumn.onclick = makeApply(f, occumulator);
+
+
+                finalRow.appendChild(applyColumn);
+                finalRow.appendChild(digitZeroColumn);
+                finalRow.appendChild(backspaceColumn);
+
+                table.appendChild(finalRow);
+
+                parent.appendChild(strOccumulator);
+                parent.appendChild(table);
+
+                return parent;
+            }
+
+            function makeToggle(active, id, f) {
+                toggle_parent = document.createElement('div');
+                toggle_parent.classList.add("gamepaddialog_FieldChildren_14_HB");
+
+                toggle = document.createElement('div');
+                toggle_rail = document.createElement('div');
+                toggle_switch = document.createElement('div');
+
+                toggle.setAttribute("id", id);
+                toggle.classList.add("gamepaddialog_Toggle_24G4g", "Focusable")
+                toggle_rail.classList.add("gamepaddialog_ToggleRail_2JtC3");
+                toggle_switch.classList.add("gamepaddialog_ToggleSwitch_3__OD");
+
+                toggle_parent.appendChild(toggle);
+                toggle.appendChild(toggle_rail);
+                toggle.appendChild(toggle_switch);
+
+                toggle.onclick = makeOnToggle(id, f);
+
+                setToggleState(toggle, active);
+
+                return toggle_parent;
+            }
+
+            function makeOnToggle(id, f) {
+                return async function() {
+                    let toggle = document.getElementById(id);
+                    let isActive = getToggleState(toggle);
+
+                    f(!isActive, id);
+
+                    setToggleState(toggle, !isActive);
+                }
+            }
+
+            function makeAppOnClick(id) {
+                return async function() {
+                    makeAppSettings(id);
+                }
+            }
+
+            function dialResolution(app, member) {
+                return function() {
+                    state.active_tab = {
+                        "type":tabDial,
+                        "id":app.id
+                    }
+
+                    page = document.getElementById("element-list");
+                    page.textContent = '';
+
+                    page.appendChild(makeDial(function(val) {
+                        app[member] = val;
+                        
+                        if(app.active) {
+                            applyGamescopeModeChange(true, app.id);
+                        }
+
+                        state.onBack();
+                    }))
+
+                    state.onBack = function() {
+                        makeAppSettings(app.id);
+                    }
+                }
+            }
+
+            function makeAppSettings(id) {
+                state.active_tab = {
+                    "type":tabAppSettings,
+                    "id":id
+                };
+
+                document.getElementById("apply-settings").style.display = 'none';
+
+                app = getAppByID(id);
+
+                page = document.getElementById("element-list");
+                page.textContent = '';
+
+                title = document.createElement("h2");
+                title.textContent = app.name;
+
+                page.appendChild(title);
+                
+                {
+                    cont = document.createElement("div");
+                    cont.classList.add("col-container");
+
+                    columnL = document.createElement("div");
+                    columnL.classList.add("col");
+                    columnL.textContent = `Width: ${app.width === 0 ? "Native" : app.width}`
+                    columnL.onclick = dialResolution(app, "width");
+
+                    columnR = document.createElement("div");
+                    columnR.classList.add("col");
+                    columnR.textContent = `Height: ${app.height === 0 ? "Native" : app.height}`
+                    columnR.onclick = dialResolution(app, "height");
+                    
+                    cont.appendChild(columnL);
+                    cont.appendChild(columnR);
+
+                    page.appendChild(cont);
+                }
+
+                toggle = makeToggle(app.superRes, app.id, function(toggleStateActive, id) {
+                    foundApp = getAppByID(id);
+
+                    foundApp.superRes = toggleStateActive;
+
+                    if(app.active) {
+                        applyGamescopeModeChange(true, id);
+                    }
+                });
+
+                label = document.createElement('div');
+                label.classList.add("gamepaddialog_FieldLabel_3b0U-");
+                label.innerHTML = "Super Resolution";
+
+                toggle_parent = document.createElement("div");
+                toggle_parent.className = "col-container";
+
+
+                toggle_parent.appendChild(label);
+                toggle_parent.appendChild(toggle);
+
+                page.appendChild(toggle_parent);
+
+                state.onBack = makeAppList;
+            }
+
+            function makeAppList() {
+                state.active_tab = {
+                    "type":tabMain,
+                    "id":undefined
+                };
+
+                document.getElementById("apply-settings").style.display = 'block';
+                document.getElementById("element-list").textContent = '';
+
+                let table = document.createElement("table");
+                document.getElementById("element-list").appendChild(table);
+
+                state.apps.forEach(app => {
+                    let tableRow = document.createElement("tr");
+                    let tableColumnL = document.createElement("td");
+                    let tableColumnR = document.createElement("td");
+
+                    tableColumnL.className = tableColumnR.className = "app-list";
+
+                    table.appendChild(tableRow);
+                    tableRow.appendChild(tableColumnL);
+                    tableRow.appendChild(tableColumnR);
+
+                    title = document.createElement("div");
+                    title.className = "clippedTitle";
+                    title.textContent = app.name;
+                    title.onclick = makeAppOnClick(app.id);
+
+                    tableColumnR.appendChild(makeToggle(app.active, app.id, applyGamescopeModeChange));
+
+
+                    tableColumnL.appendChild(title);
+                });
+
+                state.onAppy = function() {
+                    writeSettings(JSON.stringify(state.apps.map(function(_app) {
+                        app = {
+                            "id":_app.id,
+                            "width":_app.width,
+                            "height":_app.height,
+                            "name":_app.name,
+                            "superRes":_app.superRes
+                        };
+
+                        return app;
+                    }))).then(state.onBack);
+                }
+                state.onBack = exit;
+            }
+
+            async function onReady() {
+                modeChangeScriptPath().then(function(e) {
+                    gamescopeModeChangeScriptPath = e;
+
+                    readSettings().then(function(strApps) {
+                        state.apps = JSON.parse(strApps);
+
+                        update();
+                    });
+                });
+            }
+
+            const TOGGLE_ON_CLASS = "gamepaddialog_On_3ld7T";
+            
+            function setToggleState(toggle, state) {
+                if (state && !toggle.classList.contains(TOGGLE_ON_CLASS)) {
+                    toggle.classList.add(TOGGLE_ON_CLASS);
+                }
+
+                if (!state && toggle.classList.contains(TOGGLE_ON_CLASS)) {
+                    toggle.classList.remove(TOGGLE_ON_CLASS);
+                }
+            }
+            
+            function getToggleState(toggle) {
+                return toggle.classList.contains(TOGGLE_ON_CLASS);
+            }
+
+            function onApplyClick() {
+                state.onAppy();
+            }
+
+            function onBackClick() {
+                state.onBack();
+            }
+
+            function exit() {
+                location.href = "http://127.0.0.1:1337/plugins/iframe";
+            }
+        </script>
+    </body>
+</html>
