@@ -49,7 +49,6 @@ class Plugin:
         return str(PLUGIN_DIR / "gamescope-mode-change/gamescope-mode-change.py")
 
     async def read_settings(self) -> str:
-        logging.debug("read-settings")
         # If the config file doesn't exist yet, send an empty list back
         if(not Plugin.SETTINGS_PATH.exists()):
             return "[]"
@@ -58,7 +57,6 @@ class Plugin:
             return f.read()
 
     async def write_settings(self, contents : str):
-        logging.debug(contents)
         if(not Plugin.SETTINGS_PATH.exists()):
             Plugin.SETTINGS_PATH.parent.resolve().mkdir(parents=True, exist_ok=True)
 

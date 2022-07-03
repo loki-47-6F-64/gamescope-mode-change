@@ -157,7 +157,6 @@
             }
 
             async function sp(action) {
-                // console.debug(action);
                 return execute_in_tab("SP", true, action);
             }
 
@@ -165,53 +164,64 @@
                 return sp(`window.SteamClient.Apps.SetAppLaunchOptions(${appid}, "${options}")`);
             }
 
-            async function shortcuts() {
-                let result = (await execute_in_tab("SP", true, `
-                    async function appDetails(appid) {
+            async function appDetails(appid) {
+                result = (await execute_in_tab("SP", true, `
+                    async function tmp() {
                         resolver = function(e) {}
                         promise = new Promise((resolve, reject) => {
                             resolver = resolve;
                         });
 
-                        let handle = SteamClient.Apps.RegisterForAppDetails(appid, function(appData) {
+                        let handle = SteamClient.Apps.RegisterForAppDetails(${appid}, function(appData) {
                             resolver(appData);
                         });
 
-                        let res = await promise;
-                        return res;
-                    }
-                    async function tmp() {
-                        let res = await SteamClient.Apps.GetAllShortcuts();
-
-                        let apps = res.filter(x => x.data.bIsApplication).map(function(_app) {
-                            data = _app.data;
-                            app = {
-                                "id":_app.appid,
-                                "width":0,
-                                "height":0,
-                                "name":data.strAppName,
-                                "superRes":false
-                            };
-
-                            return app;
-                        });
-
-                        for(let x = 0; x < apps.length; x++) {
-                            app = apps[x];
-                            app.fullArgs = (await appDetails(app.id)).strLaunchOptions;
-                        }
-
-                        return JSON.stringify(apps);
+                        let res = (await promise);
+                        return JSON.stringify(res);
                     }
 
                     tmp()
                 `)).result;
 
-                if(result === "null") {
-                    return undefined;
+                return JSON.parse(result);
+            }
+
+            async function shortcuts() {
+                let strResult = (await execute_in_tab("SP", true, `
+                    async function tmp() {
+                        let res = await SteamClient.Apps.GetAllShortcuts();
+
+                        return JSON.stringify(res);
+                    }
+
+                    tmp()
+                `)).result;
+
+                if(strResult === "null") {
+                    return [];
                 }
 
-                return JSON.parse(result);
+                result = JSON.parse(strResult);
+
+                let apps = result.filter(x => x.data.bIsApplication).map(function(_app) {
+                    data = _app.data;
+                    app = {
+                        "id":_app.appid,
+                        "width":0,
+                        "height":0,
+                        "name":data.strAppName,
+                        "superRes":false
+                    };
+
+                    return app;
+                });
+
+                for(let x = 0; x < apps.length; x++) {
+                    app = apps[x];
+                    app.fullArgs = (await appDetails(app.id)).strLaunchOptions;
+                }
+
+                return apps;
             }
 
             let state = {
@@ -276,7 +286,9 @@
             }
 
             function update() {
-                shortcuts().then(function(apps) { 
+                // Call shortcuts twice, since the first call won't deliver correct data after a restart of Steam :/
+                // Don't know why
+                shortcuts().then(_ => shortcuts().then(function(apps) { 
                     function search(pattern, str, f) {
                         cutoff = str.search(pattern);
                         if(cutoff !== -1) {
@@ -320,7 +332,7 @@
                             makeAppList();
                             break;
                     }
-                });
+                }));
             }
 
             function makeDial(f) {
@@ -593,7 +605,7 @@
                 state.onBack = exit;
             }
 
-            async function onReady() {
+            function onReady() {
                 modeChangeScriptPath().then(function(e) {
                     gamescopeModeChangeScriptPath = e;
 
