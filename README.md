@@ -2,6 +2,28 @@
 
 * Copy gamescope-mode-change to `/path/to/homebrew/plugins/gamescope-mode-change`
 
+## Main page:
+
+![app-list-page](extras/app-list-page.jpg "Non-Steam Apps list")
+
+* This is a complete list of all Non-Steam games in your Steam Library
+* By clicking on an app, you'll open the settings page for that particular app
+* By clicking on `Save settings`, Gamescope-mode-change will remember your settings even if the toggle has been set to off.
+
+## Settings page:
+![settings-page](extras/settings-page.jpg "Settings")
+
+* By default, Gamescope-mode-change will set the resolution to the native resolution of your current monitor.
+* If Super Resolution is toggled off, the resolution will be set to Native or Width/Height, whichever is lower, otherwise it will force your configures Width/Height
+* If either Width or Height is set to Native, Super Resolution will effectively be set to off.
+* By clicking on either Width or Height, you'll be able to set the Width or Height respectively.
+
+
+## Dial page:
+![dial-page](extras/dial-page.jpg "Input Number")
+
+* Should be pretty straightforward
+
 
 Gamescope-mode-change works by modifying the launch options of your game, wich will make Steam run a script right before starting the game.
 ```
