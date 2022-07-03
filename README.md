@@ -1,6 +1,11 @@
 [Steam Deck Plugin Loader](https://github.com/SteamDeckHomebrew/PluginLoader) to modify the nested resolution as seen by your games.
 
-* Copy gamescope-mode-change to `/path/to/homebrew/plugins/gamescope-mode-change`
+## Installation:
+1. Ensure you have [Steam Deck Plugin Loader](https://github.com/SteamDeckHomebrew/PluginLoader) installed
+2. git clone https://github.com/loki-47-6F-64/gamescope-mode-change.git
+3. cd gamescope-mode-change
+4. git submodule update --init
+5. Copy gamescope-mode-change to `/path/to/homebrew/plugins/gamescope-mode-change`
 
 ## Main page:
 
