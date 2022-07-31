@@ -116,7 +116,7 @@
                 color: #969696;
             }
         </style>
-        <script src="/static/library.js"></script>
+        <!-- <script src="/static/library.js"></script> -->
         <style type="text/css" media="screen"></style>
     </head>
     <body onload="onReady()" style="overflow-x:hidden;overflow-y:hidden;">
@@ -298,12 +298,14 @@
 
                     // Discard apps that are no longer stored as a shortcut on Steam
                     state.apps = apps.map(function(_app) {
-                        app = getAppByID(_app.id);
+                        app = apps.filter(function(a) {
+                            return a.id == _app.id;
+                        })[0];
                         if(app === undefined) {
                             app = _app;
                         }
 
-                        // If fullArgs contains gamescopeModeChange logic, app.args will be replaced
+                        // // If fullArgs contains gamescopeModeChange logic, app.args will be replaced
                         app.args = _app.fullArgs;
 
                         // If app is active, take parsed data instead of stored data
